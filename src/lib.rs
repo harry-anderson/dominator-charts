@@ -1,15 +1,14 @@
-use std::sync::Arc;
-use wasm_bindgen::prelude::*;
+use dominator::{class, clone, events, html, svg, with_node, Dom};
+use futures_signals::signal::{not, Mutable};
 use gloo_timers::future::TimeoutFuture;
-use serde_derive::{Serialize, Deserialize};
-use futures_signals::signal::{Mutable, not};
-use dominator::{html, class, events, clone, with_node, Dom};
-use web_sys::HtmlInputElement;
 use once_cell::sync::Lazy;
+use serde_derive::{Deserialize, Serialize};
+use std::sync::Arc;
 use util::*;
+use wasm_bindgen::prelude::*;
+use web_sys::HtmlInputElement;
 
 mod util;
-
 
 #[derive(Debug, Serialize, Deserialize)]
 struct User {
@@ -53,7 +52,6 @@ impl User {
     }
 }
 
-
 struct App {
     user: Mutable<Option<User>>,
     input: Mutable<String>,
@@ -70,70 +68,44 @@ impl App {
     }
 
     fn render(app: Arc<Self>) -> Dom {
-        static APP: Lazy<String> = Lazy::new(|| class! {
-            .style("white-space", "pre")
+         static APP: Lazy<String> = Lazy::new(|| {
+            class! {
+                .style("white-space", "pre")
+            }
+        });
+
+       static SVG: Lazy<String> = Lazy::new(|| {
+            class! {
+                .style("background-color", "#ccc")
+            }
         });
 
         html!("div", {
             .class(&*APP)
-
             .children(&mut [
-                html!("input" => HtmlInputElement, {
-                    .prop_signal("value", app.input.signal_cloned())
-
-                    .with_node!(element => {
-                        .event(clone!(app => move |_: events::Input| {
-                            app.input.set(element.value());
-                        }))
-                    })
-                }),
-
-                html!("button", {
-                    .text("Lookup user")
-
-                    .event(clone!(app => move |_: events::Click| {
-                        let input = app.input.lock_ref();
-
-                        if *input == "" {
-                            app.user.set(None);
-
-                        } else {
-                            let input = input.to_string();
-
-                            app.loader.load(clone!(app => async move {
-                                // Simulate a slow network
-                                TimeoutFuture::new(5_000).await;
-
-                                let user = User::fetch(&input).await.ok();
-                                app.user.set(user);
-                            }));
-                        }
-                    }))
-                }),
-
-                html!("button", {
-                    .text("Cancel")
-
-                    .event(clone!(app => move |_: events::Click| {
-                        app.loader.cancel();
-                    }))
-                }),
-
-                html!("div", {
-                    .visible_signal(app.loader.is_loading())
-                    .text("LOADING")
-                }),
-
-                html!("div", {
-                    .visible_signal(not(app.loader.is_loading()))
-
-                    .text_signal(app.user.signal_ref(|user| format!("{:#?}", user)))
-                }),
+                  svg!("svg", {
+                    .class(&*SVG)
+                    .attr("viewBox", "0 0 500 250")
+                    .children(&mut [
+                          svg!("polyline", {
+                              .attr("fill", "none")
+                              .attr("stroke", "blue")
+                              .attr("stroke-width", "4")
+                              .attr("points", "
+                                    0, 250
+                                    20, 60
+                                    140, 80
+                                    260, 160
+                                    480, 20
+                                    500, 0
+                                ")
+                          })
+                    ])
+                  })
             ])
         })
     }
 }
-
 
 #[wasm_bindgen(start)]
 pub async fn main_js() -> Result<(), JsValue> {
