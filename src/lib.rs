@@ -3,6 +3,7 @@ use futures_signals::signal::{not, Mutable};
 use gloo_timers::future::TimeoutFuture;
 use once_cell::sync::Lazy;
 use serde_derive::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::sync::Arc;
 use util::*;
 use wasm_bindgen::prelude::*;
@@ -10,71 +11,34 @@ use web_sys::HtmlInputElement;
 
 mod util;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct User {
-    login: String,
-    id: u32,
-    node_id: String,
-    avatar_url: String,
-    gravatar_id: String,
-    url: String,
-    html_url: String,
-    followers_url: String,
-    following_url: String,
-    gists_url: String,
-    starred_url: String,
-    subscriptions_url: String,
-    repos_url: String,
-    events_url: String,
-    received_events_url: String,
-    #[serde(rename = "type")]
-    type_: String,
-    site_admin: bool,
-    name: Option<String>,
-    company: Option<String>,
-    blog: String,
-    location: Option<String>,
-    email: Option<String>,
-    hireable: Option<bool>,
-    bio: Option<String>,
-    public_repos: u32,
-    public_gists: u32,
-    followers: u32,
-    following: u32,
-    created_at: String,
-    updated_at: String,
-}
-
-impl User {
-    async fn fetch(user: &str) -> Result<Self, JsValue> {
-        let user = fetch_github(&format!("https://api.github.com/users/{}", user)).await?;
-        Ok(serde_json::from_str::<Self>(&user).unwrap())
-    }
-}
-
 struct App {
-    user: Mutable<Option<User>>,
     input: Mutable<String>,
+    data: Mutable<Value>,
     loader: AsyncLoader,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Data {
+    points: Vec<[i64; 2]>,
+}
+
 impl App {
-    fn new(name: &str, user: Option<User>) -> Arc<Self> {
+    fn new(name: &str, data: serde_json::Value) -> Arc<Self> {
         Arc::new(Self {
-            user: Mutable::new(user),
             input: Mutable::new(name.to_string()),
+            data: Mutable::new(data),
             loader: AsyncLoader::new(),
         })
     }
 
     fn render(app: Arc<Self>) -> Dom {
-         static APP: Lazy<String> = Lazy::new(|| {
+        static APP: Lazy<String> = Lazy::new(|| {
             class! {
                 .style("white-space", "pre")
             }
         });
 
-       static SVG: Lazy<String> = Lazy::new(|| {
+        static SVG: Lazy<String> = Lazy::new(|| {
             class! {
                 .style("background-color", "#ccc")
             }
@@ -91,14 +55,20 @@ impl App {
                               .attr("fill", "none")
                               .attr("stroke", "blue")
                               .attr("stroke-width", "4")
-                              .attr("points", "
-                                    0, 250
-                                    20, 60
-                                    140, 80
-                                    260, 160
-                                    480, 20
-                                    500, 0
-                                ")
+                              .attr_signal("points", app.data.signal_ref(|data| {
+                                  match data.pointer("/points") {
+                                    Some(Value::Array(arr)) => {
+                                        arr.iter().map(|v| {
+                                            match v {
+                                                Value::Array(arr) => format!("{}, {}",arr[0], arr[1]),
+                                                _ => String::from("")
+                                            }
+                                        }).collect::<Vec<String>>().join(" ")
+                                    },
+                                    Some(_) => String::from(""),
+                                    None => String::from(""),
+                                }
+                              }))
                           })
                     ])
                   })
@@ -111,9 +81,16 @@ impl App {
 pub async fn main_js() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 
-    let user = User::fetch("Pauan").await.ok();
+    let data = json!({
+        "points": [
+            [0, 250],
+            [100, 100],
+            [200, 150],
+            [300, 0],
+        ]
+    });
 
-    let app = App::new("Pauan", user);
+    let app = App::new("Pauan", data);
 
     dominator::append_dom(&dominator::body(), App::render(app));
 
